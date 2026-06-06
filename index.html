@@ -928,6 +928,7 @@ window.__dataReady.then(data => {
     const [view,setView]   = useState('summary');
     const [filterCode,setFilterCode] = useState('ALL');
     const [filterYear,setFilterYear] = useState('ALL');
+    const [selCust,setSelCust] = useState(null);
 
     const rawItems = D.damageItems || [];
     const sales    = D.damageSales || {};
@@ -1139,7 +1140,6 @@ window.__dataReady.then(data => {
 
       {/* Damage view — มูลค่าเสียหาย จากมาก→น้อย + ลูกค้า คลิกดูรายละเอียด */}
       {view==='damage' && (()=>{
-        const [selCust, setSelCust] = React.useState(null);
 
         // สาเหตุ เรียงมาก→น้อย
         const causeRanked = Object.entries(
