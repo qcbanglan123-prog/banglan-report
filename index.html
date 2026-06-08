@@ -1698,7 +1698,7 @@ window.__dataReady.then(data => {
   function App(){
     const [tab,setTab]=useState('overview');
     const [year,setYear]=useState(()=>Math.max(...Object.keys(D.years).map(Number)));
-    const tabs=[{id:'overview',label:'ภาพรวมการผลิต'},{id:'compare',label:'เทียบรายปี'},{id:'quality',label:'คุณภาพ & วัตถุดิบ'},{id:'damage',label:'เสียหาย REB/ROB/ID'}];
+    const tabs=[{id:'overview',label:'ภาพรวมการผลิต'},{id:'compare',label:'เทียบรายปี'},{id:'quality',label:'คุณภาพ & วัตถุดิบ'},{id:'damage',label:'มูลค่า-เปอร์เซ็นต์เสียหาย'}];
     return <div className="app">
       <header className="topbar">
         <div className="topbar__brand">
