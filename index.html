@@ -580,7 +580,7 @@ function LineChart({categories,series,targets=[],height=300,unit='',decimals=0,y
       </g>)}
       {boxEls}
       {hover!=null&&<line x1={x(hover)} x2={x(hover)} y1={pad.t} y2={pad.t+iH} stroke={PALETTE.axis} strokeDasharray="3 3" opacity="0.5"/>}
-      {categories.map((cat,ci)=><text key={ci} x={x(ci)} y={H-pad.b+18} textAnchor="middle" className="ax-lbl">{cat}</text>)}
+      {categories.map((cat,ci)=><text key={ci} x={x(ci)} y={H-pad.b+18} textAnchor={ci===0?'start':ci===categories.length-1?'end':'middle'} className="ax-lbl">{cat}</text>)}
     </svg>
     {hover!=null&&<Tooltip tip={{x:Math.min(x(hover)+12,W-150),y:pad.t+4,title:categories[hover],rows:series.map(s=>({color:s.color,label:s.label,value:s.data[hover]==null?'–':fmt(s.data[hover],decimals)+(unit?' '+unit:'')}))}}/>}
   </div>;
@@ -1915,7 +1915,7 @@ window.__dataReady.then(data => {
 
     // chart 2 — fixed ages 1,3,5,7 only
     const sampleDates=[...new Set(rows.map(sd))].sort().filter(date=>
-      allFormulas.some(f=>CURVE_AGES.every(a=>rows.some(r=>sd(r)===date&&fm(r)===f&&ag(r)===a)))
+      allFormulas.some(f=>CURVE_AGES.every(a=>rows.some(r=>sd(r)===date&&fm(r)===f&&ag(r)===a&&ks(r)>0)))
     );
     const c2Forms=selFormulas2.length?selFormulas2:allFormulas;
     const c2Series=selSample?c2Forms.map((f,fi)=>({
