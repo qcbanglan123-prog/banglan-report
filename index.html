@@ -1802,14 +1802,26 @@ window.__dataReady.then(data => {
     const [dateFrom,setDateFrom]=useState('');
     const [dateTo,setDateTo]=useState('');
     const [selFormulas,setSelFormulas]=useState([]);
-    const [selAges,setSelAges]=useState([]);
+    const [selAges,setSelAges]=useState([7]);
     const [selSample,setSelSample]=useState(null);
-    const [selFormula2,setSelFormula2]=useState(null);
+    const [selFormulas2,setSelFormulas2]=useState([]);
+
+    const COLORS=['#2f5fd0','#d65b5b','#d98a2b','#15a39b','#7b61c4','#5a8f3c','#c44d8f','#4a6b8a','#b07b3a','#8a8f9a'];
 
     useEffect(()=>{
       fetch(CONCRETE_URL).then(r=>r.json()).then(res=>{
-        if(res.success) setRows(res.data||[]);
-        else setErr('โหลดข้อมูลไม่สำเร็จ');
+        if(res.success){
+          const data=res.data||[];
+          setRows(data);
+          // default: 15 วันล่าสุด
+          const dates=data.map(r=>String(r['วันที่เก็บตัวอย่าง']||'').slice(0,10)).filter(Boolean).sort();
+          if(dates.length){
+            const last=dates[dates.length-1];
+            const d=new Date(last); d.setDate(d.getDate()-14);
+            setDateTo(last);
+            setDateFrom(d.toISOString().slice(0,10));
+          }
+        } else setErr('โหลดข้อมูลไม่สำเร็จ');
         setLoading(false);
       }).catch(e=>{setErr('เชื่อมต่อไม่ได้: '+e.message);setLoading(false);});
     },[]);
@@ -1818,70 +1830,89 @@ window.__dataReady.then(data => {
     if(err) return <div style={{padding:40,textAlign:'center',color:'#c00'}}>{err}</div>;
     if(!rows.length) return <div style={{padding:40,textAlign:'center',color:'#888'}}>ยังไม่มีข้อมูล — ใช้ /คอนกรีต ใน Code tab เพื่อบันทึกผลทดสอบ</div>;
 
-    const getVal=(r,k)=>r[k]||r[Object.keys(r).find(x=>x.trim()===k.trim())||''];
-    const sampleDate=r=>String(getVal(r,'วันที่เก็บตัวอย่าง')||'').slice(0,10);
-    const testDate=r=>String(getVal(r,'วันที่ทดสอบ')||'').slice(0,10);
-    const formula=r=>String(getVal(r,'ชื่อสูตร')||'').trim();
-    const age=r=>Number(getVal(r,'อายุ(วัน)')||0);
-    const ksc=r=>Number(getVal(r,'เฉลี่ย KSC')||0);
+    const sd=r=>String(r['วันที่เก็บตัวอย่าง']||'').slice(0,10);
+    const fm=r=>String(r['ชื่อสูตร']||'').trim();
+    const ag=r=>Number(r['อายุ(วัน)']||0);
+    const ks=r=>Number(r['เฉลี่ย KSC']||0);
 
-    const allFormulas=[...new Set(rows.map(formula).filter(Boolean))].sort();
-    const allAges=[...new Set(rows.map(age).filter(Boolean))].sort((a,b)=>a-b);
+    const allFormulas=[...new Set(rows.map(fm).filter(Boolean))].sort();
+    const allAges=[...new Set(rows.map(ag).filter(Boolean))].sort((a,b)=>a-b);
 
-    // filter for chart 1
+    // เลื่อนวันที่ ±15 วัน
+    const shiftDays=d=>{
+      const f=new Date(dateFrom); f.setDate(f.getDate()+d);
+      const t=new Date(dateTo); t.setDate(t.getDate()+d);
+      setDateFrom(f.toISOString().slice(0,10));
+      setDateTo(t.toISOString().slice(0,10));
+    };
+
+    // filter
     const filt=rows.filter(r=>{
-      const sd=sampleDate(r);
-      if(dateFrom&&sd<dateFrom) return false;
-      if(dateTo&&sd>dateTo) return false;
-      if(selFormulas.length&&!selFormulas.includes(formula(r))) return false;
-      if(selAges.length&&!selAges.includes(age(r))) return false;
+      const s=sd(r);
+      if(dateFrom&&s<dateFrom) return false;
+      if(dateTo&&s>dateTo) return false;
+      if(selFormulas.length&&!selFormulas.includes(fm(r))) return false;
+      if(selAges.length&&!selAges.includes(ag(r))) return false;
       return true;
     });
 
-    const c1Dates=[...new Set(filt.map(sampleDate))].sort();
-    const c1Formulas=selFormulas.length?selFormulas:allFormulas;
-    const COLORS=['#2f5fd0','#d65b5b','#d98a2b','#15a39b','#7b61c4','#5a8f3c','#c44d8f','#4a6b8a'];
-    const c1Series=c1Formulas.map((f,fi)=>({
-      label:f, color:COLORS[fi%COLORS.length],
-      data:c1Dates.map(d=>{
-        const rs=filt.filter(r=>sampleDate(r)===d&&formula(r)===f);
-        if(!rs.length) return null;
-        const sum=rs.reduce((s,r)=>s+ksc(r),0);
-        return Math.round((sum/rs.length)*10)/10;
-      })
-    }));
+    const c1Dates=[...new Set(filt.map(sd))].sort();
+    const activeForms=selFormulas.length?selFormulas:allFormulas;
+    const activeAges=selAges.length?selAges:allAges;
 
-    // chart 2: age curve
-    const sampleDates=[...new Set(rows.map(sampleDate))].sort();
-    const c2Ages=allAges;
-    const c2Formulas=selFormula2?[selFormula2]:allFormulas;
-    const c2Series=selSample?c2Formulas.map((f,fi)=>({
+    // series = formula × age แยกกัน ไม่รวมกัน
+    const c1Series=[];
+    activeForms.forEach((f,fi)=>{
+      activeAges.forEach((a,ai)=>{
+        const ci=(fi*activeAges.length+ai)%COLORS.length;
+        const label=activeAges.length>1?`${f} Day${a}`:f;
+        c1Series.push({
+          label, color:COLORS[ci],
+          data:c1Dates.map(d=>{
+            const rs=filt.filter(r=>sd(r)===d&&fm(r)===f&&ag(r)===a);
+            if(!rs.length) return null;
+            return Math.round((rs.reduce((s,r)=>s+ks(r),0)/rs.length)*10)/10;
+          })
+        });
+      });
+    });
+
+    // chart 2
+    const sampleDates=[...new Set(rows.map(sd))].sort();
+    const c2Forms=selFormulas2.length?selFormulas2:allFormulas;
+    const c2Series=selSample?c2Forms.map((f,fi)=>({
       label:f, color:COLORS[fi%COLORS.length],
-      data:c2Ages.map(a=>{
-        const rs=rows.filter(r=>sampleDate(r)===selSample&&formula(r)===f&&age(r)===a);
+      data:allAges.map(a=>{
+        const rs=rows.filter(r=>sd(r)===selSample&&fm(r)===f&&ag(r)===a);
         if(!rs.length) return null;
-        return Math.round((rs.reduce((s,r)=>s+ksc(r),0)/rs.length)*10)/10;
+        return Math.round((rs.reduce((s,r)=>s+ks(r),0)/rs.length)*10)/10;
       })
     })):[];
+
+    const btnStyle={padding:'4px 10px',borderRadius:5,border:'1px solid #ccd',background:'#f5f6fa',cursor:'pointer',fontSize:13,color:'#444'};
 
     return <div style={{padding:'24px 20px'}}>
       {/* Chart 1 */}
       <div className="chart-card" style={{marginBottom:24}}>
         <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:16}}>
-          <span style={{fontWeight:700,fontSize:15,color:'#1a2540',marginRight:4}}>กำลังอัดคอนกรีตตามวันเก็บตัวอย่าง</span>
+          <span style={{fontWeight:700,fontSize:15,color:'#1a2540'}}>กำลังอัดคอนกรีตตามวันเก็บตัวอย่าง</span>
+          <button style={btnStyle} onClick={()=>shiftDays(-15)}>◀ 15 วัน</button>
           <label style={{fontSize:13,color:'#555'}}>จาก <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} style={{border:'1px solid #ccd',borderRadius:5,padding:'3px 6px',fontSize:13}}/></label>
           <label style={{fontSize:13,color:'#555'}}>ถึง <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} style={{border:'1px solid #ccd',borderRadius:5,padding:'3px 6px',fontSize:13}}/></label>
+          <button style={btnStyle} onClick={()=>shiftDays(15)}>15 วัน ▶</button>
           <MultiSelect label="สูตร" options={allFormulas} value={selFormulas} onChange={setSelFormulas}/>
           <MultiSelect label="อายุ(วัน)" options={allAges.map(String)} value={selAges.map(String)} onChange={v=>setSelAges(v.map(Number))}/>
-          {(dateFrom||dateTo||selFormulas.length||selAges.length)&&<button onClick={()=>{setDateFrom('');setDateTo('');setSelFormulas([]);setSelAges([]);}} style={{fontSize:12,padding:'4px 10px',borderRadius:5,border:'1px solid #ccd',background:'#f5f6fa',cursor:'pointer',color:'#555'}}>ล้าง</button>}
+          {(selFormulas.length||selAges.length)&&<button onClick={()=>{setSelFormulas([]);setSelAges([7]);}} style={{...btnStyle,color:'#c00'}}>ล้าง</button>}
         </div>
         {c1Dates.length===0
-          ?<div style={{textAlign:'center',color:'#aaa',padding:40}}>ไม่มีข้อมูลตามเงื่อนไขที่เลือก</div>
+          ?<div style={{textAlign:'center',color:'#aaa',padding:40}}>ไม่มีข้อมูลในช่วงที่เลือก</div>
           :<>
-            <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:8}}>
-              {c1Series.map(s=><span key={s.label} style={{fontSize:12,display:'flex',alignItems:'center',gap:4}}><span style={{width:16,height:3,background:s.color,display:'inline-block',borderRadius:2}}></span>{s.label}</span>)}
+            <div style={{display:'flex',gap:16,flexWrap:'wrap',marginBottom:8}}>
+              {c1Series.filter(s=>s.data.some(v=>v!=null)).map(s=><span key={s.label} style={{fontSize:12,display:'flex',alignItems:'center',gap:5,color:s.color,fontWeight:600}}>
+                <span style={{width:18,height:3,background:s.color,display:'inline-block',borderRadius:2}}></span>{s.label}
+              </span>)}
             </div>
-            <LineChart categories={c1Dates} unit="KSC" decimals={1} showValues series={c1Series} height={280}/>
+            <LineChart categories={c1Dates} unit="KSC" decimals={1} showValues series={c1Series.filter(s=>s.data.some(v=>v!=null))} height={300}/>
           </>
         }
       </div>
@@ -1889,25 +1920,25 @@ window.__dataReady.then(data => {
       {/* Chart 2 */}
       <div className="chart-card">
         <div style={{display:'flex',alignItems:'center',flexWrap:'wrap',gap:10,marginBottom:16}}>
-          <span style={{fontWeight:700,fontSize:15,color:'#1a2540',marginRight:4}}>กราฟอายุคอนกรีต (Strength Curve)</span>
+          <span style={{fontWeight:700,fontSize:15,color:'#1a2540'}}>กราฟอายุคอนกรีต (Strength Curve)</span>
           <label style={{fontSize:13,color:'#555'}}>วันที่เก็บ:&nbsp;
             <select value={selSample||''} onChange={e=>setSelSample(e.target.value||null)} style={{border:'1px solid #ccd',borderRadius:5,padding:'3px 8px',fontSize:13}}>
               <option value="">-- เลือกวันที่ --</option>
               {sampleDates.map(d=><option key={d} value={d}>{d}</option>)}
             </select>
           </label>
-          <MultiSelect label="สูตร" options={allFormulas} value={selFormula2?[selFormula2]:[]} onChange={v=>setSelFormula2(v[v.length-1]||null)}/>
+          <MultiSelect label="สูตร" options={allFormulas} value={selFormulas2} onChange={setSelFormulas2}/>
         </div>
         {!selSample
           ?<div style={{textAlign:'center',color:'#aaa',padding:40}}>เลือกวันที่เก็บตัวอย่างเพื่อดูกราฟ Strength Curve</div>
-          :c2Ages.length===0
-            ?<div style={{textAlign:'center',color:'#aaa',padding:40}}>ไม่มีข้อมูลสำหรับวันที่นี้</div>
-            :<>
-              <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:8}}>
-                {c2Series.map(s=><span key={s.label} style={{fontSize:12,display:'flex',alignItems:'center',gap:4}}><span style={{width:16,height:3,background:s.color,display:'inline-block',borderRadius:2}}></span>{s.label}</span>)}
-              </div>
-              <LineChart categories={c2Ages.map(a=>`Day ${a}`)} unit="KSC" decimals={1} showValues series={c2Series} height={280}/>
-            </>
+          :<>
+            <div style={{display:'flex',gap:16,flexWrap:'wrap',marginBottom:8}}>
+              {c2Series.filter(s=>s.data.some(v=>v!=null)).map(s=><span key={s.label} style={{fontSize:12,display:'flex',alignItems:'center',gap:5,color:s.color,fontWeight:600}}>
+                <span style={{width:18,height:3,background:s.color,display:'inline-block',borderRadius:2}}></span>{s.label}
+              </span>)}
+            </div>
+            <LineChart categories={allAges.map(a=>`Day ${a}`)} unit="KSC" decimals={1} showValues series={c2Series.filter(s=>s.data.some(v=>v!=null))} height={280}/>
+          </>
         }
       </div>
     </div>;
